@@ -1,4 +1,6 @@
 // Team page simulator: mode tabs, what-if preview, Monte Carlo runs, history drawer.
+// Preview/hydration races: AbortController + monotonic seq for stale preview drops;
+// hydrating gate + dirty flag so /api/sim/current cannot overwrite in-flight edits.
 (function () {
   const root = document.getElementById("sim-root");
   if (!root) return;
@@ -16,6 +18,11 @@
     mc: { n: 1000, bias: 0, use_current_picks: true },
   };
 
+  let hydrating = true;
+  let dirty = false;
+  let previewAbort = null;
+  let previewSeq = 0;
+
   function qs(sel, el) { return (el || root).querySelector(sel); }
   function qsa(sel, el) { return Array.from((el || root).querySelectorAll(sel)); }
 
@@ -27,12 +34,18 @@
     };
   }
 
-  function postJSON(url, body) {
+  function postJSON(url, body, options) {
+    const opts = options || {};
     return fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
+      signal: opts.signal,
     }).then((r) => r.json().then((data) => ({ status: r.status, data })));
+  }
+
+  function markDirty() {
+    if (!dirty) dirty = true;
   }
 
   function putJSON(url, body) {
@@ -156,7 +169,7 @@
         showError(historyErrorEl, (data && data.error) || "Restore failed");
         return;
       }
-      hydrateFromCurrent(data.current);
+      hydrateFromCurrent(data.current, { force: true });
       switchMode("whatif");
       closeDrawer();
     });
@@ -210,6 +223,17 @@
   const whatifResetBtn = qs("#whatif-reset");
   const whatifSaveBtn = qs("#whatif-save");
 
+  function setSimControlsDisabled(disabled) {
+    qsa("select", whatifGroupsEl).forEach((el) => { el.disabled = disabled; });
+    qsa("select", whatifKoEl).forEach((el) => { el.disabled = disabled; });
+    if (whatifResetBtn) whatifResetBtn.disabled = disabled;
+    if (whatifSaveBtn) whatifSaveBtn.disabled = disabled;
+    if (mcNInput) mcNInput.disabled = disabled;
+    if (mcBiasInput) mcBiasInput.disabled = disabled;
+    if (mcUsePicksInput) mcUsePicksInput.disabled = disabled;
+    if (mcRunBtn && mcRunBtn.textContent === "Run") mcRunBtn.disabled = disabled;
+  }
+
   function buildSelect(id, options, selected, placeholder) {
     const select = document.createElement("select");
     select.id = id;
@@ -260,6 +284,7 @@
         label.textContent = `M${slot.match_no} (${slot.stage}) winner`;
         const select = buildSelect(`whatif-ko-${slot.match_no}`, slot.candidates, null, "Undecided");
         select.addEventListener("change", () => {
+          markDirty();
           if (select.value) {
             state.whatif.ko[slot.match_no] = select.value;
           } else {
@@ -275,6 +300,7 @@
   }
 
   function onGroupPickChange(group, firstSelect, secondSelect) {
+    markDirty();
     const first = firstSelect.value;
     const second = secondSelect.value;
     if (first && second && first !== second) {
@@ -301,10 +327,16 @@
 
   function runWhatifPreview() {
     if (!whatifPreviewEl) return;
+    if (previewAbort) previewAbort.abort();
+    previewAbort = new AbortController();
+    const seq = ++previewSeq;
+    const signal = previewAbort.signal;
+
     showError(whatifErrorEl, null);
     whatifPreviewEl.classList.add("sim-skeleton");
-    postJSON("/api/sim/whatif/preview", { team_id: teamId, picks: state.whatif })
+    postJSON("/api/sim/whatif/preview", { team_id: teamId, picks: state.whatif }, { signal })
       .then(({ status, data }) => {
+        if (seq !== previewSeq) return;
         whatifPreviewEl.classList.remove("sim-skeleton");
         if (status !== 200 || !data.ok) {
           showError(whatifErrorEl, (data && data.error) || "Preview failed");
@@ -313,6 +345,7 @@
         renderWhatifPreview(data.projection);
       })
       .catch((e) => {
+        if (seq !== previewSeq || e.name === "AbortError") return;
         whatifPreviewEl.classList.remove("sim-skeleton");
         showError(whatifErrorEl, e.message);
       });
@@ -365,6 +398,7 @@
 
   if (whatifResetBtn) {
     whatifResetBtn.addEventListener("click", () => {
+      markDirty();
       state.whatif = { groups: {}, ko: {} };
       applyWhatifStateToControls();
       runWhatifPreview();
@@ -398,6 +432,11 @@
   const mcResultsEl = qs("#mc-results");
   const mcErrorEl = qs("#mc-error");
   const strengthBanner = qs("#strength-banner");
+
+  [mcNInput, mcBiasInput, mcUsePicksInput].forEach((el) => {
+    if (el) el.addEventListener("change", markDirty);
+  });
+  if (mcBiasInput) mcBiasInput.addEventListener("input", markDirty);
 
   function setStrengthBanner(signal) {
     standingsSignal = signal;
@@ -481,23 +520,31 @@
   }
 
   // ---- Hydrate from server-side current state --------------------------
-  function hydrateFromCurrent(current) {
+  function hydrateFromCurrent(current, options) {
+    const force = options && options.force;
     if (!current) return;
+    if (!force && dirty) return;
     state.whatif = current.whatif || { groups: {}, ko: {} };
     state.mc = current.mc || state.mc;
     applyWhatifStateToControls();
     if (mcNInput) mcNInput.value = state.mc.n;
     if (mcBiasInput) mcBiasInput.value = state.mc.bias;
     if (mcUsePicksInput) mcUsePicksInput.checked = !!state.mc.use_current_picks;
+    if (force) dirty = false;
     runWhatifPreview();
   }
 
   renderWhatifControls();
+  setSimControlsDisabled(true);
   fetch("/api/sim/current")
     .then((r) => r.json())
     .then((data) => {
       if (data.ok) hydrateFromCurrent(data.current);
       else runWhatifPreview();
     })
-    .catch(() => runWhatifPreview());
+    .catch(() => runWhatifPreview())
+    .finally(() => {
+      hydrating = false;
+      setSimControlsDisabled(false);
+    });
 })();
