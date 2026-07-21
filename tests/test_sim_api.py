@@ -162,3 +162,27 @@ def test_mc_rejects_bias_out_of_range(tmp_path):
     c = _client(tmp_path)
     r = c.post("/api/sim/montecarlo/run", json={"team_id": "a1", "n": 50, "bias": 2})
     assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_put_current_bad_group_shape_rejected(tmp_path):
+    c = _client(tmp_path)
+    r = c.put("/api/sim/current", json={
+        "whatif": {"groups": {"A": "bad"}, "ko": {}},
+        "mc": {"n": 100, "bias": 0, "use_current_picks": True},
+    })
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_mc_rejects_nan_bias(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/sim/montecarlo/run", json={"team_id": "a1", "n": 50, "bias": float("nan")})
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_whatif_preview_bad_group_shape_rejected(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/sim/whatif/preview", json={
+        "team_id": "a1",
+        "picks": {"groups": {"A": "bad"}, "ko": {}},
+    })
+    assert r.status_code == 400 and r.get_json()["ok"] is False

@@ -1,6 +1,8 @@
 """JSON API blueprint for the team simulator (ratings, what-if, Monte Carlo, history)."""
 from __future__ import annotations
 
+import math
+
 from flask import Blueprint, jsonify, request
 
 from projection.load import build_context
@@ -48,9 +50,31 @@ def _parse_bias(value, *, default=0.0):
         bias = float(value)
     except (TypeError, ValueError):
         return None, err("bias must be numeric")
+    if not math.isfinite(bias):
+        return None, err("bias must be finite")
     if bias < 0.0 or bias > 1.0:
         return None, err("bias must be between 0 and 1")
     return bias, None
+
+
+def _normalize_team_id(value, *, field: str):
+    if isinstance(value, str):
+        return value, None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value), None
+    return None, err(f"{field} must be a team id string")
+
+
+def _normalize_group_slot(slot, group_name: str):
+    if not isinstance(slot, dict):
+        return None, err(f"whatif.groups[{group_name!r}] must be an object with first and second")
+    first, first_err = _normalize_team_id(slot.get("first"), field=f"whatif.groups[{group_name!r}].first")
+    if first_err:
+        return None, first_err
+    second, second_err = _normalize_team_id(slot.get("second"), field=f"whatif.groups[{group_name!r}].second")
+    if second_err:
+        return None, second_err
+    return {"first": first, "second": second}, None
 
 
 def _normalize_whatif(raw):
@@ -58,12 +82,24 @@ def _normalize_whatif(raw):
         return {"groups": {}, "ko": {}}, None
     if not isinstance(raw, dict):
         return None, err("whatif must be an object")
-    groups = raw.get("groups", {})
-    ko = raw.get("ko", {})
-    if not isinstance(groups, dict):
+    groups_raw = raw.get("groups", {})
+    ko_raw = raw.get("ko", {})
+    if not isinstance(groups_raw, dict):
         return None, err("whatif.groups must be an object")
-    if not isinstance(ko, dict):
+    if not isinstance(ko_raw, dict):
         return None, err("whatif.ko must be an object")
+    groups = {}
+    for group_name, slot in groups_raw.items():
+        normalized, slot_err = _normalize_group_slot(slot, str(group_name))
+        if slot_err:
+            return None, slot_err
+        groups[str(group_name)] = normalized
+    ko = {}
+    for match_no, winner in ko_raw.items():
+        team_id, winner_err = _normalize_team_id(winner, field=f"whatif.ko[{match_no!r}]")
+        if winner_err:
+            return None, winner_err
+        ko[str(match_no)] = team_id
     return {"groups": groups, "ko": ko}, None
 
 
@@ -144,8 +180,11 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
         team_id = body.get("team_id")
         if not team_id:
             return err("team_id required")
+        picks, picks_err = _normalize_whatif(body.get("picks"))
+        if picks_err:
+            return picks_err
         try:
-            result = whatif_preview_project(team_id, _ctx(), body.get("picks"))
+            result = whatif_preview_project(team_id, _ctx(), picks)
         except ValueError as exc:
             return err(str(exc))
         return ok(result)
