@@ -6,7 +6,10 @@ from flask import Flask, render_template, abort, jsonify
 from dashboard.data_access import DataStore
 from dashboard.jobs import RefreshJob
 from dashboard.sim_api import make_sim_blueprint
+from projection.load import build_context
+from projection.resolver import _side_set
 from simulation.store import SimStore
+from simulation.strength import standings_have_signal
 
 SITE = "https://ofsportsaiub.org"
 
@@ -15,6 +18,35 @@ def _asset(path):
     if not path:
         return ""
     return f"{SITE}{path}" if path.startswith("/") else path
+
+
+def _group_teams(teams_list):
+    """group -> [{id, country, team_name}] for what-if group 1st/2nd selects."""
+    groups: dict[str, list] = {}
+    for t in teams_list:
+        groups.setdefault(t.get("group") or "?", []).append(
+            {"id": t.get("id"), "country": t.get("country"), "team_name": t.get("team_name")})
+    for g in groups.values():
+        g.sort(key=lambda t: t.get("country") or "")
+    return dict(sorted(groups.items()))
+
+
+def _ko_slots(ctx):
+    """Bracket matches with >=2 live candidates, for what-if KO winner selects."""
+    slots = []
+    for match_no in sorted(ctx.matches):
+        m = ctx.matches[match_no]
+        candidates = sorted(_side_set(m, "home", ctx) | _side_set(m, "away", ctx))
+        if len(candidates) < 2:
+            continue
+        slots.append({
+            "match_no": match_no,
+            "stage": m.get("stage"),
+            "home_label": m.get("home_label"),
+            "away_label": m.get("away_label"),
+            "candidates": [ctx.team_brief(tid) for tid in candidates],
+        })
+    return slots
 
 
 def create_app(data_dir="./data/latest", sim_dir=None, job=None):
@@ -55,8 +87,13 @@ def create_app(data_dir="./data/latest", sim_dir=None, job=None):
             abort(404)
         roster = store.roster(tid) or {"players": []}
         projection = store.projections().get(tid, {"scenarios": {}})
+        standings_signal = standings_have_signal(store.standings())
+        group_teams = _group_teams(store.teams())
+        ko_slots = _ko_slots(build_context(store.teams(), store.standings(), store.bracket()))
         return render_template("team_detail.html", title=team.get("country"),
-                               team=team, roster=roster, projection=projection)
+                               team=team, roster=roster, projection=projection,
+                               standings_signal=standings_signal, group_teams=group_teams,
+                               ko_slots=ko_slots)
 
     @app.route("/fixtures")
     def fixtures_page():
