@@ -1,15 +1,24 @@
 # AIUB World Cup 2026 Scraper — Design Spec
 
 **Date:** 2026-07-21
-**Status:** Approved (pending final spec review)
-**Scope:** Scraper only. The simulation that consumes this data is out of scope.
+**Status:** Approved — ready for implementation planning
+**Scope:** Three components in one repo:
+1. A re-runnable **scraper** producing clean JSON of the full tournament dataset (§2–§7).
+2. A deterministic **possible-opponents projection** ("path to the final") over the scraped data (§8).
+3. A **Flask web dashboard** that visualizes everything, with a background data-refresh button (§9).
+
+A full probabilistic Monte Carlo simulation is out of scope (§10).
 
 ## 1. Goal
 
 Build a re-runnable Python scraper for **https://ofsportsaiub.org/** (the AIUB World Cup 2026
 tournament portal) that produces clean, structured JSON of the full tournament dataset. Each run
 captures the current state of the tournament (which starts 2026-07-28 and runs into early August),
-so the data can seed and later refresh a match simulation.
+so the data can seed and later refresh analysis.
+
+On top of that data, provide a **projection** tool: for a chosen team, compute the set of teams they
+could face at each knockout round on the way to the final, based purely on the bracket structure and
+group assignments (§8).
 
 ## 2. Site analysis (confirmed)
 
@@ -104,18 +113,24 @@ Scorer = { rank, player_id, name, team, goals }
 
 **bracket.json** — `[ BracketStage ]`
 ```
-BracketStage = { stage, matches: [ { slot, home, away, home_score, away_score, status } ] }
+BracketStage = { stage, matches: [ KnockoutMatch ] }
+KnockoutMatch = { match_no, next_match_no, match_url, stage,
+                  home_label, away_label,          # e.g. "1st of Group A", "2nd of Group I", "Winner of M49"
+                  home_team, away_team,            # resolved team name once known, else null
+                  home_score, away_score, status }
 ```
+`match_no` + `next_match_no` encode the bracket tree; `home_label`/`away_label` encode the seeding
+(group position or "Winner of M#"). These drive the §8 projection.
 
 **manifest.json** (per run) — `{ scraped_at, source, entities: { <name>: { count, source_url, ok, error? } }, snapshot_dir }`
 
 ## 4. Architecture
 
-Python 3, `requests` + `beautifulsoup4` + `lxml`, in a virtualenv.
+Python 3, `requests` + `beautifulsoup4` + `lxml` + `flask`, in a virtualenv. `pytest` for tests (dev).
 
 ```
-ossport-scraper/
-├── requirements.txt          # requests, beautifulsoup4, lxml
+webscrape-aiub-world-cup-2026/   (repo root)
+├── requirements.txt          # requests, beautifulsoup4, lxml, flask
 ├── README.md  .gitignore
 ├── scraper/
 │   ├── config.py             # BASE_URL, endpoints, output paths, default delay
@@ -131,12 +146,28 @@ ossport-scraper/
 │   │   └── bracket.py        # bracket fragment -> [BracketStage]
 │   ├── writer.py             # dataclasses -> JSON (latest/ + snapshot/ + manifest)
 │   └── run.py                # CLI orchestrator
+├── projection/               # §8 possible-opponents feature (reads data/latest/*.json)
+│   ├── load.py               # load teams.json + standings.json + bracket.json
+│   ├── resolver.py           # slot label ("1st of Group A" / "Winner of M49") -> set[team]
+│   ├── path.py               # per-team round-by-round possible opponents to the final
+│   ├── run.py                # write projections.json for all teams
+│   └── cli.py                # CLI entry point
+├── dashboard/                # §9 Flask web dashboard (reads data/latest/*.json)
+│   ├── app.py                # Flask app + routes
+│   ├── data_access.py        # load + cache data/latest/*.json; freshness via manifest
+│   ├── jobs.py               # background refresh job (subprocess) + status
+│   ├── templates/            # base + overview/teams/team_detail/fixtures/standings/bracket/scorers
+│   └── static/               # css/js (visual design sourced from ui-ux-pro-max)
 ├── data/
-│   ├── latest/               # teams/fixtures/standings/rosters/scorers/bracket.json + manifest.json
+│   ├── latest/               # teams/fixtures/standings/rosters/scorers/bracket.json,
+│   │                         #   projections.json (from projection.run), manifest.json
 │   └── snapshots/<ISO-timestamp>/   # full copy of each run (tournament history)
 └── tests/
     ├── fixtures_html/        # saved real HTML fragments/pages
-    └── test_parsers.py       # offline parser unit tests (no network)
+    ├── fixtures_json/        # small sample data/latest set for projection + dashboard tests
+    ├── test_parsers.py       # offline parser unit tests (§7)
+    ├── test_projection.py    # resolver + path unit tests (§8)
+    └── test_dashboard.py     # Flask route tests, subprocess stubbed (§9)
 ```
 
 ### Data flow (one run)
@@ -146,6 +177,9 @@ ossport-scraper/
    (real `team_name`, captain) and build its `Roster`. Polite delay between requests.
 4. `writer` writes each entity to `data/latest/`, copies the set into a timestamped
    `data/snapshots/<ts>/`, and writes `manifest.json`.
+
+A **full refresh** = `scraper.run` then `projection.run` (which writes `projections.json` from the
+freshly scraped data). This is the sequence the dashboard's background refresh button (§9) triggers.
 
 ### CLI
 ```
@@ -182,10 +216,97 @@ to `tests/fixtures_html/` and each parser is unit-tested offline against expecte
 covering both the empty pre-tournament state and a hand-edited "played" sample so live-result
 parsing is verified before real matches happen. No network access in tests.
 
-## 8. Out of scope (YAGNI)
+## 8. Possible-opponents projection ("path to the final")
 
-- The simulation engine itself.
+A deterministic tool, in the `projection/` package, that reads `data/latest/` and answers: **for a
+given team, which teams could they face at each knockout round on the way to the final?**
+
+### Inputs
+- `bracket.json` — the tree (`match_no` → `next_match_no`) and slot labels (`home_label`/`away_label`).
+- `teams.json` — team → group (and country/team_name for display).
+- `standings.json` — current group order, used to narrow slots once results exist.
+
+### Slot resolution (`resolver.py`)
+Resolve any slot **label** to the set of teams that could fill it, given current knowledge:
+- `"1st of Group A"` / `"2nd of Group A"` → if standings for Group A are decided, the concrete team;
+  otherwise every team in Group A (any could take that position).
+- `"Winner of M49"` → recursively, the union of teams that can reach either side of match M49.
+- A concrete resolved `home_team`/`away_team` (once the site fills it in) → that single team.
+
+### Path computation (`path.py`)
+For a chosen team T in group G:
+1. Entry slots: the R32 match(es) whose label is `"1st of Group G"` or `"2nd of Group G"`. Pre-group-stage
+   both are possible, so T may have two candidate paths (winner-of-group vs runner-up); report both,
+   labelled. Once T's group position is decided, keep only the real one.
+2. From each entry match, the **opponent slot** resolves (via `resolver.py`) to a set of possible teams
+   → that round's possible opponents (T itself removed).
+3. Follow `next_match_no` to the next round; the opponent there is `"Winner of M#"` of the sibling
+   subtree → resolve to a set. Repeat up to the Final.
+4. Emit, per round (R32, R16, QF, SF, Final), the set of possible opponents (as country + team_name).
+
+The same code path works pre-tournament (large sets) and mid-tournament (sets collapse toward single
+teams) because everything flows through slot resolution against current standings/results.
+
+### CLI & output
+```
+python -m projection.cli --team "Netherlands"        # match by country, team_name, or slug
+python -m projection.cli --team "CS Backbencher"
+python -m projection.cli --all --json data/latest/projections.json
+```
+- Default: a readable round-by-round report to stdout (each round → the possible opponents).
+- `--all --json <path>`: write `projections.json`, an object **keyed by team `id`** (matching the
+  dashboard's `/teams/<id>` route), each value:
+  `{ country, team_name, scenarios: { "group_winner"|"runner_up": [ {round, possible_opponents:[ {id, country, team_name} ] } ] } }`.
+  Written to `data/latest/projections.json` by default.
+
+### Testing
+Pure functions over loaded JSON (no network). Unit-test `resolver.py` and `path.py` against a small
+fixed bracket + group fixture, asserting the possible-opponent sets at each round for a sample team,
+in both the pre-tournament (all groups open) and partially-resolved states.
+
+## 9. Web dashboard (Flask)
+
+A read-oriented Flask + Jinja2 app in `dashboard/` that visualizes `data/latest/*.json`. Visual
+design is sourced from the **ui-ux-pro-max** skill at build time (user-accepted; sports-dashboard
+direction: clean, modern, flag/badge-forward, responsive, light+dark).
+
+### Data access (`data_access.py`)
+Loads the entity JSON files, caches them in memory, and invalidates the cache when `manifest.json`'s
+`scraped_at` changes. The dashboard never scrapes inline — it only reads files.
+
+### Routes / views
+- `/` **Overview** — tournament status (from manifest + fixtures), next matches, quick stats, refresh control.
+- `/teams` — grid of all 48 teams showing **country + real team_name** + faculty + group; searchable.
+- `/teams/<id>` **Team detail** — the roster (16 players + captain) **and the star view: the
+  possible-opponents "path to the final"** (read from `projections.json`).
+- `/fixtures` — all matches grouped by day, scores/status, searchable.
+- `/standings` — the 16 group tables.
+- `/bracket` — the knockout tree (R32→Final).
+- `/scorers` — top scorers (empty-state until the first goal).
+
+### Path-to-final view
+For the selected team, render round-by-round cards (R32 → R16 → QF → SF → Final); each card lists the
+**possible opponents** at that round (flag + country + real name). A team has up to two entry scenarios
+(group winner vs runner-up) — show both, toggle-able. Data comes straight from `projections.json`;
+no bracket logic in the browser. (Exact layout to be refined with ui-ux-pro-max during implementation.)
+
+### Background refresh (`jobs.py`)
+- `POST /refresh` starts a **background job** (subprocess running the full refresh: `scraper.run` +
+  `projection.run`) and returns immediately; only one job runs at a time.
+- `GET /refresh/status` reports job state (`idle`/`running`/`done`/`error`), start time, and per-entity
+  counts on completion. The Overview page polls this (or uses SSE) to show progress, then reloads data.
+- The HTTP request never blocks on the ~54-request scrape.
+
+### Testing
+Flask test client hits each route against a fixture `data/latest/` and asserts key content renders
+(teams show both names, a team's path lists the expected opponent sets, empty-states don't crash).
+The refresh job is tested with the subprocess stubbed.
+
+## 10. Out of scope (YAGNI)
+
+- A **probabilistic Monte Carlo** simulation / win-probability model (the §8 projection is deterministic).
 - A database / diffing layer (timestamped JSON snapshots cover history).
-- Scheduling/automation (user runs the command when they want a refresh).
+- Scheduled/automated scraping (cron etc.); refresh is manual — CLI or the §9 button.
+- Public hosting / auth / multi-user; the dashboard is a local single-user tool.
 - Scraping `/matches/{id}` pages or `/players/{id}` pages (fixtures + rosters already carry the data).
-- Overview and fair-play tabs (derivable/aggregate; not needed for simulation).
+- Overview-tab and fair-play tab scraping (derivable/aggregate; not needed here).
