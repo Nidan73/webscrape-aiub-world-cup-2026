@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · AIUB World Cup 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot"></span> AIUB World Cup <b>2026</b></a>
+    <nav class="nav">
+      {% for label, href in nav %}
+        <a href="{{ href }}" class="nav-link{{ ' active' if request.path == href or (href != '/' and request.path.startswith(href)) }}">{{ label|capitalize }}</a>
+      {% endfor %}
+    </nav>
+    <button id="refresh-btn" class="btn" type="button" aria-live="polite">Refresh data</button>
+  </header>
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="foot">
+    Data scraped from <a href="https://ofsportsaiub.org">ofsportsaiub.org</a>
+    {% if manifest.scraped_at %} · last updated {{ manifest.scraped_at }}{% endif %}
+  </footer>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>

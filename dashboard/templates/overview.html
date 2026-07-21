@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Tournament Overview</h1>
+<section class="stat-row">
+  <div class="stat"><span class="stat-num">{{ stats.teams }}</span><span class="stat-lbl">Teams</span></div>
+  <div class="stat"><span class="stat-num">{{ stats.groups }}</span><span class="stat-lbl">Groups</span></div>
+  <div class="stat"><span class="stat-num">{{ stats.fixtures }}</span><span class="stat-lbl">Matches</span></div>
+  <div class="stat"><span class="stat-num">{{ stats.played }}</span><span class="stat-lbl">Played</span></div>
+</section>
+
+<h2 class="section-title">Next matches</h2>
+<div class="card-grid">
+  {% for f in upcoming %}
+  <article class="match-card">
+    <div class="match-meta"><span class="pill">Group {{ f.group }}</span><span>{{ f.date }} · {{ f.time }}</span></div>
+    <div class="match-teams">
+      <span class="side">{% if f.home.flag_code %}<img class="flag" src="{{ asset('/assets/flags/w40/' ~ f.home.flag_code ~ '.png') }}" alt="">{% endif %}{{ f.home.country }}</span>
+      <span class="vs">{{ f.raw_score }}</span>
+      <span class="side">{% if f.away.flag_code %}<img class="flag" src="{{ asset('/assets/flags/w40/' ~ f.away.flag_code ~ '.png') }}" alt="">{% endif %}{{ f.away.country }}</span>
+    </div>
+  </article>
+  {% else %}
+  <p class="muted">No upcoming matches.</p>
+  {% endfor %}
+</div>
+{% endblock %}
