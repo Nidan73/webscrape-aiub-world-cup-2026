@@ -16,6 +16,75 @@ def err(msg, code=400):
     return jsonify({"ok": False, "error": msg}), code
 
 
+def _json_object():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return None, err("request body must be a JSON object")
+    return body, None
+
+
+def _parse_int_param(value, name, *, default=None, min_val=1, max_val=10000):
+    if value is None:
+        if default is None:
+            return None, err(f"{name} required")
+        return default, None
+    if isinstance(value, bool):
+        return None, err(f"{name} must be an integer")
+    if isinstance(value, float):
+        if not value.is_integer():
+            return None, err(f"{name} must be an integer")
+        value = int(value)
+    elif not isinstance(value, int):
+        return None, err(f"{name} must be an integer")
+    if value < min_val or value > max_val:
+        return None, err(f"{name} must be between {min_val} and {max_val}")
+    return value, None
+
+
+def _parse_bias(value, *, default=0.0):
+    if value is None:
+        return default, None
+    try:
+        bias = float(value)
+    except (TypeError, ValueError):
+        return None, err("bias must be numeric")
+    if bias < 0.0 or bias > 1.0:
+        return None, err("bias must be between 0 and 1")
+    return bias, None
+
+
+def _normalize_whatif(raw):
+    if raw is None:
+        return {"groups": {}, "ko": {}}, None
+    if not isinstance(raw, dict):
+        return None, err("whatif must be an object")
+    groups = raw.get("groups", {})
+    ko = raw.get("ko", {})
+    if not isinstance(groups, dict):
+        return None, err("whatif.groups must be an object")
+    if not isinstance(ko, dict):
+        return None, err("whatif.ko must be an object")
+    return {"groups": groups, "ko": ko}, None
+
+
+def _normalize_mc(raw, defaults=None):
+    defaults = defaults or {"n": 1000, "bias": 0.0, "use_current_picks": True}
+    if raw is None:
+        return dict(defaults), None
+    if not isinstance(raw, dict):
+        return None, err("mc must be an object")
+    n, n_err = _parse_int_param(raw.get("n"), "n", default=defaults["n"])
+    if n_err:
+        return None, n_err
+    bias, bias_err = _parse_bias(raw.get("bias"), default=defaults["bias"])
+    if bias_err:
+        return None, bias_err
+    use_current_picks = raw.get("use_current_picks", defaults["use_current_picks"])
+    if not isinstance(use_current_picks, bool):
+        return None, err("mc.use_current_picks must be a boolean")
+    return {"n": n, "bias": bias, "use_current_picks": use_current_picks}, None
+
+
 def make_sim_blueprint(store, sim_store, data_dir=None):
     """`store` is the dashboard DataStore (teams/standings/bracket reads),
     `sim_store` is the SimStore (ratings/current/history persistence),
@@ -33,9 +102,9 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/ratings", methods=["PUT"])
     def put_ratings():
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            return err("ratings must be an object of team_id -> number")
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
         try:
             clean = sim_store.put_ratings(body)
         except (TypeError, ValueError):
@@ -48,10 +117,16 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/current", methods=["PUT"])
     def put_current():
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            return err("current must be an object")
-        cur = sim_store.put_current(body)
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
+        whatif, whatif_err = _normalize_whatif(body.get("whatif"))
+        if whatif_err:
+            return whatif_err
+        mc, mc_err = _normalize_mc(body.get("mc"))
+        if mc_err:
+            return mc_err
+        cur = sim_store.put_current({"whatif": whatif, "mc": mc})
         if body.get("autosave", True):
             sim_store.save_history(
                 type="auto",
@@ -63,7 +138,9 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/whatif/preview", methods=["POST"])
     def whatif_preview():
-        body = request.get_json(silent=True) or {}
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
         team_id = body.get("team_id")
         if not team_id:
             return err("team_id required")
@@ -75,16 +152,21 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/montecarlo/run", methods=["POST"])
     def montecarlo_run():
-        body = request.get_json(silent=True) or {}
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
         team_id = body.get("team_id")
         if not team_id:
             return err("team_id required")
-        try:
-            n = int(body.get("n", 1000))
-            bias = float(body.get("bias", 0.0))
-        except (TypeError, ValueError):
-            return err("n and bias must be numeric")
-        use_current_picks = bool(body.get("use_current_picks", True))
+        n, n_err = _parse_int_param(body.get("n"), "n", default=1000)
+        if n_err:
+            return n_err
+        bias, bias_err = _parse_bias(body.get("bias"), default=0.0)
+        if bias_err:
+            return bias_err
+        use_current_picks = body.get("use_current_picks", True)
+        if not isinstance(use_current_picks, bool):
+            return err("use_current_picks must be a boolean")
         current = sim_store.get_current()
         picks = body["picks"] if "picks" in body else current.get("whatif")
         try:
@@ -109,7 +191,9 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/history", methods=["POST"])
     def create_history():
-        body = request.get_json(silent=True) or {}
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
         htype = body.get("type", "named")
         if htype not in ("auto", "named"):
             return err("type must be auto or named")
@@ -137,7 +221,9 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
 
     @bp.route("/history/<hid>", methods=["PATCH"])
     def rename_history(hid):
-        body = request.get_json(silent=True) or {}
+        body, body_err = _json_object()
+        if body_err:
+            return body_err
         title = body.get("title")
         if not title:
             return err("title required")

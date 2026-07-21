@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from dashboard.app import create_app
 
 
@@ -128,3 +130,35 @@ def test_put_current_autosave_false_skips_history(tmp_path):
                                     "autosave": False})
     history = c.get("/api/sim/history").get_json()["history"]
     assert not any(h["type"] == "auto" for h in history)
+
+
+@pytest.mark.parametrize("method,path", [
+    ("post", "/api/sim/whatif/preview"),
+    ("post", "/api/sim/montecarlo/run"),
+    ("post", "/api/sim/history"),
+    ("put", "/api/sim/current"),
+    ("put", "/api/sim/ratings"),
+])
+def test_json_array_body_rejected(tmp_path, method, path):
+    c = _client(tmp_path)
+    r = getattr(c, method)(path, json=[1, 2, 3])
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_put_current_bad_mc_type_rejected(tmp_path):
+    c = _client(tmp_path)
+    r = c.put("/api/sim/current", json={"whatif": {"groups": {}, "ko": {}}, "mc": "bad"})
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+@pytest.mark.parametrize("n", [1.9, 10000.9])
+def test_mc_rejects_fractional_n(tmp_path, n):
+    c = _client(tmp_path)
+    r = c.post("/api/sim/montecarlo/run", json={"team_id": "a1", "n": n, "bias": 0})
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_mc_rejects_bias_out_of_range(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/sim/montecarlo/run", json={"team_id": "a1", "n": 50, "bias": 2})
+    assert r.status_code == 400 and r.get_json()["ok"] is False
