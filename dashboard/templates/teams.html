@@ -4,6 +4,7 @@
   <h1 class="page-title">Teams</h1>
   <span class="page-count">{{ teams|length }} team{{ 's' if teams|length != 1 }}</span>
 </div>
+<p class="muted page-desc">Open any team for the opponent simulator — Possible opponents, What-if, and Monte Carlo.</p>
 {% if teams %}
 <div class="card-grid">
   {% for t in teams %}
@@ -13,6 +14,7 @@
       <div>
         <div class="team-name">{{ t.team_name or t.country }}</div>
         <div class="country-sub">{{ t.country }} · Group {{ t.group }}{% if t.faculty %} · {{ t.faculty }}{% endif %}</div>
+        <div class="country-sub" style="margin-top:6px;color:var(--primary)">Simulator →</div>
       </div>
     </div>
   </a>
