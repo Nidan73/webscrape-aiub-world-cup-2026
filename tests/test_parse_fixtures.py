@@ -44,3 +44,24 @@ def test_parse_fixtures_unplayed_and_played():
     assert a.raw_score == "VS" and a.home_score is None and a.status == "scheduled"
     b = fx[1]
     assert b.home_score == 2 and b.away_score == 1 and b.status == "final"
+
+
+REGIONAL = """
+<article class="fixture-row"><a class="fixture-card-link" href="/matches/9-england-vs-scotland"></a>
+  <div class="fixture-card-head"><span>Group C</span><span>Aug 2, 2:00 PM</span></div>
+  <div class="fixture-card-main">
+    <div class="fixture-side home"><span class="fixture-team">
+      <img class="flag-icon" src="/assets/flags/w40/gb-eng.png"> England</span></div>
+    <strong class="fixture-score">VS</strong>
+    <div class="fixture-side away"><span class="fixture-team">
+      <img class="flag-icon" src="/assets/flags/w40/gb-sct.png"> Scotland</span></div>
+  </div>
+  <div class="fixture-card-foot"><span class="fixture-no">Match 9</span></div>
+</article>
+"""
+
+
+def test_regional_flag_codes_are_captured():
+    fx = parse_fixtures(REGIONAL)
+    assert fx[0].home.flag_code == "gb-eng"
+    assert fx[0].away.flag_code == "gb-sct"

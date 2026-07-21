@@ -6,7 +6,8 @@ from bs4 import BeautifulSoup
 from scraper.models import Fixture, FixtureSide
 
 _MATCH_NO = re.compile(r"Match\s*(\d+)", re.I)
-_FLAG = re.compile(r"/([a-z]{2})\.png")
+# Two-letter ISO codes ("tr", "nl") plus regional codes ("gb-eng", "gb-sct").
+_FLAG = re.compile(r"/([a-z]{2}(?:-[a-z]+)?)\.png")
 
 
 def _flag_code(team_el):
