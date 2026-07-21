@@ -207,7 +207,16 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
         if not isinstance(use_current_picks, bool):
             return err("use_current_picks must be a boolean")
         current = sim_store.get_current()
-        picks = body["picks"] if "picks" in body else current.get("whatif")
+        if "picks" in body:
+            picks, picks_err = _normalize_whatif(body.get("picks"))
+            if picks_err:
+                return picks_err
+        elif use_current_picks:
+            picks, picks_err = _normalize_whatif(current.get("whatif"))
+            if picks_err:
+                return picks_err
+        else:
+            picks = None
         try:
             result = run_montecarlo(
                 team_id=team_id,

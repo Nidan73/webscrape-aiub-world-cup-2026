@@ -186,3 +186,14 @@ def test_whatif_preview_bad_group_shape_rejected(tmp_path):
         "picks": {"groups": {"A": "bad"}, "ko": {}},
     })
     assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_mc_bad_picks_shape_rejected(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/sim/montecarlo/run", json={
+        "team_id": "a1",
+        "n": 50,
+        "bias": 0,
+        "picks": {"groups": {"A": "bad"}, "ko": {}},
+    })
+    assert r.status_code == 400 and r.get_json()["ok"] is False
