@@ -25,3 +25,13 @@ Output (in `data/latest/`, plus a timestamped copy in `data/snapshots/`):
 | `scorers.json` | top scorers (empty until the first goal) |
 | `bracket.json` | knockout tree (R32→Final) with seeding labels |
 | `manifest.json` | per-run status + counts |
+
+## Projection — who can a team face on the way to the final?
+
+```bash
+./venv/bin/python -m projection.cli --team "Netherlands"   # or a real team name, e.g. "CS Backbencher"
+./venv/bin/python -m projection.cli --all                  # writes data/latest/projections.json
+```
+
+For each team it lists, per knockout round (R32→Final), the set of teams it *could* meet — as group
+winner and as runner-up. Deterministic; the sets shrink automatically as real group results come in.
