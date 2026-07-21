@@ -139,7 +139,8 @@ When standings are all zeros, bias only differentiates teams with **manual overr
 
 ### 5.3 `simulation/montecarlo.py`
 
-- For each trial: sample unresolved group finishes and KO outcomes using strength+bias; respect already-played / user-forced results when combined with what-if (v1: MC uses live data + ratings + bias; optional “include current what-if picks as fixed” flag — default **on** if picks exist).
+- For each trial: sample unresolved group finishes and KO outcomes using strength+bias; respect already-played results from live data.
+- Request flag `use_current_picks` (default **true**): when true, treat active what-if picks as fixed before sampling the rest; when false, ignore what-if and sample from live unresolved state only.
 - Aggregate reach percentages and opponent frequencies for the focus team.
 - Accept a **seed** for deterministic tests.
 - Cap N at 10_000; reject above with 400.
