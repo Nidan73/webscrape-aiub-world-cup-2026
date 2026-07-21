@@ -53,4 +53,4 @@ New cases: JSON array body → 400 (parametrized over 5 write routes); `PUT curr
 
 ### Commit
 `fix(dashboard): harden sim API request validation`
-SHA: _(pending)_
+SHA: `e3d3c6738e51a853460ce5d8b722ddc04196a377`
