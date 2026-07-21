@@ -38,3 +38,28 @@ def test_bias_favors_strong_override():
     # is observable.
     assert strong["reach"]["R32"] == weak["reach"]["R32"] == 1.0
     assert strong["reach"]["Final"] > weak["reach"]["Final"]
+
+
+def test_use_current_picks_locks_final_reach_to_certainty():
+    """Regression for the MC picks parity hole: forcing groups + KO winner
+    onto a1's own path must make Final reach == 1.0 when use_current_picks
+    is True, and a materially lower (random) Final reach when it's False --
+    i.e. `picks` must actually be threaded into the trial, not ignored."""
+    ctx = build_context(TEAMS, UNRESOLVED, BRACKET)
+    picks = {
+        "groups": {"A": {"first": "a1", "second": "a2"},
+                   "B": {"first": "b1", "second": "b2"}},
+        # M1 = 1st of A vs 2nd of B -> {a1, b2}; lock a1 to win M1 and
+        # therefore reach the Final every trial.
+        "ko": {"1": "a1"},
+    }
+    locked = run_montecarlo(team_id="a1", ctx=ctx, standings_list=UNRESOLVED,
+                            ratings={}, n=200, bias=0.0, picks=picks,
+                            use_current_picks=True, seed=3)
+    unlocked = run_montecarlo(team_id="a1", ctx=ctx, standings_list=UNRESOLVED,
+                              ratings={}, n=200, bias=0.0, picks=picks,
+                              use_current_picks=False, seed=3)
+    assert locked["reach"]["Final"] == 1.0
+    # Unforced: a1 must still win two coin-flip-ish KO rounds, so reach is
+    # materially below certainty -- nowhere near the locked 1.0.
+    assert unlocked["reach"]["Final"] < 0.75

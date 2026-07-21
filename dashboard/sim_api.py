@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 from projection.load import build_context
 from simulation.montecarlo import run_montecarlo
 from simulation.whatif import preview as whatif_preview_project
+from simulation.whatif import validate_picks
 
 
 def ok(data, code=200):
@@ -159,6 +160,9 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
         whatif, whatif_err = _normalize_whatif(body.get("whatif"))
         if whatif_err:
             return whatif_err
+        picks_err = validate_picks(_ctx(), whatif)
+        if picks_err:
+            return err(picks_err)
         mc, mc_err = _normalize_mc(body.get("mc"))
         if mc_err:
             return mc_err
@@ -207,20 +211,27 @@ def make_sim_blueprint(store, sim_store, data_dir=None):
         if not isinstance(use_current_picks, bool):
             return err("use_current_picks must be a boolean")
         current = sim_store.get_current()
+        ctx = _ctx()
         if "picks" in body:
             picks, picks_err = _normalize_whatif(body.get("picks"))
             if picks_err:
                 return picks_err
+            picks_err = validate_picks(ctx, picks)
+            if picks_err:
+                return err(picks_err)
         elif use_current_picks:
             picks, picks_err = _normalize_whatif(current.get("whatif"))
             if picks_err:
                 return picks_err
+            picks_err = validate_picks(ctx, picks)
+            if picks_err:
+                return err(picks_err)
         else:
             picks = None
         try:
             result = run_montecarlo(
                 team_id=team_id,
-                ctx=_ctx(),
+                ctx=ctx,
                 standings_list=store.standings(),
                 ratings=sim_store.get_ratings(),
                 n=n,
