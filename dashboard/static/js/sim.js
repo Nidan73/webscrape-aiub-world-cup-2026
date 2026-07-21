@@ -1,6 +1,7 @@
 // Team page simulator: mode tabs, what-if preview, Monte Carlo runs, history drawer.
 // Preview/hydration races: AbortController + monotonic seq for stale preview drops;
-// hydrating gate + dirty flag so /api/sim/current cannot overwrite in-flight edits.
+// hydrating gate + dirty flag so /api/sim/current cannot overwrite in-flight edits;
+// hydrateToken invalidates a pending GET /current when history restore wins during hydrate.
 (function () {
   const root = document.getElementById("sim-root");
   if (!root) return;
@@ -19,6 +20,7 @@
   };
 
   let hydrating = true;
+  let hydrateToken = 0;
   let dirty = false;
   let previewAbort = null;
   let previewSeq = 0;
@@ -164,6 +166,7 @@
   }
 
   function restoreHistory(id) {
+    if (hydrating) return;
     postJSON(`/api/sim/history/${encodeURIComponent(id)}/restore`, {}).then(({ status, data }) => {
       if (status !== 200 || !data.ok) {
         showError(historyErrorEl, (data && data.error) || "Restore failed");
@@ -176,6 +179,7 @@
   }
 
   function renameHistory(id) {
+    if (hydrating) return;
     const title = window.prompt("New name:");
     if (!title) return;
     fetch(`/api/sim/history/${encodeURIComponent(id)}`, {
@@ -192,6 +196,7 @@
   }
 
   function deleteHistory(id) {
+    if (hydrating) return;
     if (!window.confirm("Delete this saved scenario?")) return;
     fetch(`/api/sim/history/${encodeURIComponent(id)}`, { method: "DELETE" })
       .then((r) => r.json())
@@ -203,7 +208,7 @@
   }
 
   function openDrawer() {
-    if (!historyDrawer) return;
+    if (hydrating || !historyDrawer) return;
     historyDrawer.hidden = false;
     loadHistory();
   }
@@ -228,6 +233,9 @@
     qsa("select", whatifKoEl).forEach((el) => { el.disabled = disabled; });
     if (whatifResetBtn) whatifResetBtn.disabled = disabled;
     if (whatifSaveBtn) whatifSaveBtn.disabled = disabled;
+    if (historyOpenBtn) historyOpenBtn.disabled = disabled;
+    if (historyCloseBtn) historyCloseBtn.disabled = disabled;
+    qsa("button", historyList).forEach((el) => { el.disabled = disabled; });
     if (mcNInput) mcNInput.disabled = disabled;
     if (mcBiasInput) mcBiasInput.disabled = disabled;
     if (mcUsePicksInput) mcUsePicksInput.disabled = disabled;
@@ -407,6 +415,7 @@
 
   if (whatifSaveBtn) {
     whatifSaveBtn.addEventListener("click", () => {
+      if (hydrating) return;
       const title = window.prompt("Name this scenario:");
       if (!title) return;
       showError(whatifErrorEl, null);
@@ -524,6 +533,11 @@
     const force = options && options.force;
     if (!current) return;
     if (!force && dirty) return;
+    if (force && hydrating) {
+      hydrateToken += 1;
+      hydrating = false;
+      setSimControlsDisabled(false);
+    }
     state.whatif = current.whatif || { groups: {}, ko: {} };
     state.mc = current.mc || state.mc;
     applyWhatifStateToControls();
@@ -536,14 +550,20 @@
 
   renderWhatifControls();
   setSimControlsDisabled(true);
+  const initialHydrateToken = hydrateToken;
   fetch("/api/sim/current")
     .then((r) => r.json())
     .then((data) => {
+      if (initialHydrateToken !== hydrateToken) return;
       if (data.ok) hydrateFromCurrent(data.current);
       else runWhatifPreview();
     })
-    .catch(() => runWhatifPreview())
+    .catch(() => {
+      if (initialHydrateToken !== hydrateToken) return;
+      runWhatifPreview();
+    })
     .finally(() => {
+      if (initialHydrateToken !== hydrateToken) return;
       hydrating = false;
       setSimControlsDisabled(false);
     });
