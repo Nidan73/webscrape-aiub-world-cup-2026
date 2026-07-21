@@ -919,14 +919,12 @@ def err(msg, code=400): return jsonify({"ok": False, "error": msg}), code
 # tests/test_sim_api.py
 import json
 from dashboard.app import create_app
-from tests.dashboard_fixture import write_minimal_dataset  # adapt if name differs
-
-
 def _client(tmp_path):
     data = tmp_path / "latest"
     sim = tmp_path / "simulations"
-    data.mkdir(); sim.mkdir()
-    # seed minimal teams/standings/bracket/projections/manifest like existing fixture helper
+    data.mkdir()
+    sim.mkdir()
+    # Prefer projection mini-bracket so what-if/MC tests have a closed Final.
     from tests.test_projection_load import TEAMS, BRACKET, UNRESOLVED
     (data / "teams.json").write_text(json.dumps(TEAMS))
     (data / "standings.json").write_text(json.dumps(UNRESOLVED))
