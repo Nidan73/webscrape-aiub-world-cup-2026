@@ -1,3 +1,5 @@
+import pytest
+
 from simulation.store import SimStore
 
 
@@ -43,3 +45,35 @@ def test_auto_cap_50(tmp_path):
             "mc": {"n": 1000, "bias": 0.0, "use_current_picks": True}})
     autos = [h for h in s.list_history() if h["type"] == "auto"]
     assert len(autos) == 50
+
+
+def test_reject_path_traversal_id(tmp_path):
+    root = tmp_path / "sim"
+    s = SimStore(str(root))
+    s.put_ratings({"a1": 2.5})
+    s.put_current({"whatif": {"groups": {"A": {"first": "a1"}}, "ko": {}},
+                   "mc": {"n": 500, "bias": 0.0, "use_current_picks": True}})
+
+    assert s.get_history("../current") is None
+    assert s.delete("../current") is False
+    assert s.delete("../ratings") is False
+
+    assert (root / "ratings.json").exists()
+    assert (root / "current.json").exists()
+    assert s.get_ratings() == {"a1": 2.5}
+    assert s.get_current()["whatif"]["groups"]["A"]["first"] == "a1"
+
+    with pytest.raises(ValueError):
+        s.restore("../current")
+    with pytest.raises(ValueError):
+        s.rename("../current", "hijacked")
+
+    assert s.get_history("") is None
+    assert s.delete("") is False
+
+
+def test_store_lock_file_created_on_write(tmp_path):
+    root = tmp_path / "sim"
+    s = SimStore(str(root))
+    s.put_ratings({"x": 1.0})
+    assert (root / "store.lock").exists()

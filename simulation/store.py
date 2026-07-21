@@ -1,6 +1,7 @@
 """Server-side JSON persistence for simulator state and history."""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 _DEFAULT_CURRENT = {
@@ -16,14 +18,38 @@ _DEFAULT_CURRENT = {
 }
 _AUTO_CAP = 50
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_HISTORY_ID_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
 class SimStore:
     def __init__(self, root_dir: str):
         self.root = Path(root_dir)
         self.history_dir = self.root / "history"
+        self._lock_path = self.root / "store.lock"
         self._lock = threading.Lock()
         self.ensure()
+
+    @contextmanager
+    def _store_lock(self):
+        """Thread lock plus fcntl flock for cross-process read-modify-write."""
+        with self._lock:
+            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_fd = open(self._lock_path, "a")
+            try:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+                lock_fd.close()
+
+    def _history_path(self, id: str) -> Path | None:
+        if not id or not _HISTORY_ID_RE.match(id):
+            return None
+        path = (self.history_dir / f"{id}.json").resolve()
+        history_resolved = self.history_dir.resolve()
+        if not path.is_relative_to(history_resolved):
+            return None
+        return path
 
     def ensure(self) -> None:
         self.history_dir.mkdir(parents=True, exist_ok=True)
@@ -57,20 +83,20 @@ class SimStore:
             return default
 
     def get_ratings(self) -> dict:
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             data = self._read(self.root / "ratings.json", {})
             return data if isinstance(data, dict) else {}
 
     def put_ratings(self, data: dict) -> dict:
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             clean = {str(k): float(v) for k, v in (data or {}).items()}
             self._atomic_write(self.root / "ratings.json", clean)
             return clean
 
     def get_current(self) -> dict:
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             data = self._read(self.root / "current.json", _DEFAULT_CURRENT)
             if not isinstance(data, dict):
@@ -82,7 +108,7 @@ class SimStore:
             return data
 
     def put_current(self, data: dict) -> dict:
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             cur = {
                 "whatif": (data or {}).get("whatif") or {"groups": {}, "ko": {}},
@@ -92,7 +118,7 @@ class SimStore:
             return cur
 
     def list_history(self) -> list:
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             idx = self._read(self.root / "index.json", [])
             return idx if isinstance(idx, list) else []
@@ -104,7 +130,7 @@ class SimStore:
     def save_history(self, *, type: str, title: str, payload: dict, team_id: str | None = None) -> dict:
         if type not in ("auto", "named"):
             raise ValueError("type must be auto or named")
-        with self._lock:
+        with self._store_lock():
             self.ensure()
             ts = time.strftime("%Y%m%d-%H%M%S")
             hid = f"{type}-{ts}-{uuid.uuid4().hex[:8]}"
@@ -145,16 +171,18 @@ class SimStore:
             return entry
 
     def get_history(self, id: str):
-        with self._lock:
-            path = self.history_dir / f"{id}.json"
-            if not path.exists():
+        with self._store_lock():
+            path = self._history_path(id)
+            if path is None or not path.exists():
                 return None
             data = self._read(path, None)
             return data if isinstance(data, dict) else None
 
     def restore(self, id: str) -> dict:
-        with self._lock:
-            path = self.history_dir / f"{id}.json"
+        with self._store_lock():
+            path = self._history_path(id)
+            if path is None:
+                raise ValueError(f"invalid history id: {id!r}")
             data = self._read(path, None)
             if not isinstance(data, dict):
                 raise KeyError(id)
@@ -168,8 +196,10 @@ class SimStore:
             return data
 
     def rename(self, id: str, title: str) -> dict:
-        with self._lock:
-            path = self.history_dir / f"{id}.json"
+        with self._store_lock():
+            path = self._history_path(id)
+            if path is None:
+                raise ValueError(f"invalid history id: {id!r}")
             data = self._read(path, None)
             if not isinstance(data, dict):
                 raise KeyError(id)
@@ -183,9 +213,9 @@ class SimStore:
             return data
 
     def delete(self, id: str) -> bool:
-        with self._lock:
-            path = self.history_dir / f"{id}.json"
-            if not path.exists():
+        with self._store_lock():
+            path = self._history_path(id)
+            if path is None or not path.exists():
                 return False
             path.unlink()
             idx = self._read(self.root / "index.json", [])
