@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Top Scorers</h1>
+{% if scorers %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th>Team</th><th class="num">Goals</th></tr></thead>
+    <tbody>
+    {% for s in scorers %}
+      <tr><td class="num">{{ s.rank }}</td><td>{{ s.name }}</td><td>{{ s.team }}</td><td class="num">{{ s.goals }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><p class="muted">No goals have been recorded yet — top scorers will appear after the first goal.</p></div>
+{% endif %}
+{% endblock %}

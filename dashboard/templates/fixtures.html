@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Fixtures</h1>
+{% for day, matches in days.items() %}
+  <h2 class="section-title">{{ day }}</h2>
+  <div class="card-grid">
+    {% for f in matches %}
+    <article class="match-card">
+      <div class="match-meta">
+        <span class="pill">{{ 'Group ' ~ f.group if f.group in 'ABCDEFGHIJKLMNOP' else f.group }}</span>
+        <span>{{ f.time }}{% if f.status == 'live' %} · <span class="badge-live">LIVE</span>{% endif %}</span>
+      </div>
+      <div class="match-teams">
+        <span class="side">{% if f.home.flag_code %}<img class="flag" src="{{ asset('/assets/flags/w40/' ~ f.home.flag_code ~ '.png') }}" alt="">{% endif %}{{ f.home.country }}</span>
+        <span class="vs">{{ f.raw_score if f.status == 'scheduled' else (f.home_score|string ~ ':' ~ f.away_score|string) }}</span>
+        <span class="side">{% if f.away.flag_code %}<img class="flag" src="{{ asset('/assets/flags/w40/' ~ f.away.flag_code ~ '.png') }}" alt="">{% endif %}{{ f.away.country }}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+{% endfor %}
+{% endblock %}

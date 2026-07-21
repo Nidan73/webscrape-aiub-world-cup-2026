@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Standings</h1>
+<div class="grid-2">
+  {% for g in groups %}
+  <section class="card">
+    <h2 class="section-title" style="margin-top:0">Group {{ g.group }}</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Nation</th><th class="num">P</th><th class="num">Pts</th><th class="num">GD</th><th class="num">GF</th><th class="num">FP</th></tr></thead>
+        <tbody>
+        {% for row in g.table %}
+          <tr class="{{ 'qualify' if row.qualified }}">
+            <td class="num">{{ row.position }}</td><td>{{ row.country }}</td>
+            <td class="num">{{ row.played }}</td><td class="num">{{ row.points }}</td>
+            <td class="num">{{ row.goal_diff }}</td><td class="num">{{ row.goals_for }}</td><td class="num">{{ row.fair_play }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

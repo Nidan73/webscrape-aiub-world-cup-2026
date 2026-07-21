@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Knockout Bracket</h1>
+<div class="table-wrap" style="padding:8px">
+  <div style="display:flex;gap:16px;min-width:max-content">
+    {% for stage in stages %}
+    <div style="min-width:220px">
+      <h2 class="section-title" style="margin-top:0">{{ stage.stage }}</h2>
+      {% for m in stage.matches %}
+      <div class="card" style="margin-bottom:10px;padding:12px">
+        <div class="muted" style="font-size:.75rem">Match {{ m.match_no }}</div>
+        <div>{{ m.home_team or m.home_label or 'TBD' }}</div>
+        <div class="muted" style="font-size:.8rem">vs</div>
+        <div>{{ m.away_team or m.away_label or 'TBD' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
