@@ -51,7 +51,8 @@ class SimStore:
             return None
         return path
 
-    def ensure(self) -> None:
+    def _ensure_body(self) -> None:
+        """Create dirs and default files. Caller must hold _store_lock()."""
         self.history_dir.mkdir(parents=True, exist_ok=True)
         if not (self.root / "ratings.json").exists():
             self._atomic_write(self.root / "ratings.json", {})
@@ -59,6 +60,10 @@ class SimStore:
             self._atomic_write(self.root / "current.json", _DEFAULT_CURRENT)
         if not (self.root / "index.json").exists():
             self._atomic_write(self.root / "index.json", [])
+
+    def ensure(self) -> None:
+        with self._store_lock():
+            self._ensure_body()
 
     def _atomic_write(self, path: Path, data) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,20 +89,20 @@ class SimStore:
 
     def get_ratings(self) -> dict:
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             data = self._read(self.root / "ratings.json", {})
             return data if isinstance(data, dict) else {}
 
     def put_ratings(self, data: dict) -> dict:
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             clean = {str(k): float(v) for k, v in (data or {}).items()}
             self._atomic_write(self.root / "ratings.json", clean)
             return clean
 
     def get_current(self) -> dict:
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             data = self._read(self.root / "current.json", _DEFAULT_CURRENT)
             if not isinstance(data, dict):
                 return json.loads(json.dumps(_DEFAULT_CURRENT))
@@ -109,7 +114,7 @@ class SimStore:
 
     def put_current(self, data: dict) -> dict:
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             cur = {
                 "whatif": (data or {}).get("whatif") or {"groups": {}, "ko": {}},
                 "mc": {**_DEFAULT_CURRENT["mc"], **((data or {}).get("mc") or {})},
@@ -119,7 +124,7 @@ class SimStore:
 
     def list_history(self) -> list:
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             idx = self._read(self.root / "index.json", [])
             return idx if isinstance(idx, list) else []
 
@@ -131,7 +136,7 @@ class SimStore:
         if type not in ("auto", "named"):
             raise ValueError("type must be auto or named")
         with self._store_lock():
-            self.ensure()
+            self._ensure_body()
             ts = time.strftime("%Y%m%d-%H%M%S")
             hid = f"{type}-{ts}-{uuid.uuid4().hex[:8]}"
             entry = {
