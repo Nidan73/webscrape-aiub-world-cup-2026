@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Teams <span class="muted">({{ teams|length }})</span></h1>
+<div class="card-grid">
+  {% for t in teams %}
+  <a class="card" href="/teams/{{ t.id }}">
+    <div class="match-teams" style="justify-content:flex-start;gap:10px">
+      {% if t.flag_url %}<img class="flag" src="{{ asset(t.flag_url) }}" alt="">{% endif %}
+      <div>
+        <div class="team-name">{{ t.team_name or t.country }}</div>
+        <div class="country-sub">{{ t.country }} · Group {{ t.group }}{% if t.faculty %} · {{ t.faculty }}{% endif %}</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

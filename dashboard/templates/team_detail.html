@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<a class="muted" href="/teams">← All teams</a>
+<h1 class="page-title" style="margin-top:8px">
+  {% if team.flag_url %}<img class="flag" src="{{ asset(team.flag_url) }}" alt="" style="width:30px;vertical-align:-4px">{% endif %}
+  {{ team.country }} <span class="muted">— {{ team.team_name or "—" }}</span>
+</h1>
+<p class="muted">Group {{ team.group }}{% if team.faculty %} · {{ team.faculty }}{% endif %}
+  {% if team.captain %} · Captain: {{ team.captain.name }}{% endif %}</p>
+
+<div class="grid-2">
+  <section class="card">
+    <h2 class="section-title" style="margin-top:0">Squad <span class="muted">({{ roster.players|length }})</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Player</th><th class="num">G</th><th class="num">A</th><th class="num">C</th></tr></thead>
+        <tbody>
+        {% for p in roster.players %}
+          <tr><td class="num">{{ p.jersey_number or '' }}</td>
+              <td>{{ p.name }}{% if p.is_captain %} <span class="pill">C</span>{% endif %}</td>
+              <td class="num">{{ p.goals }}</td><td class="num">{{ p.assists }}</td><td class="num">{{ p.cards }}</td></tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">No roster data.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-title" style="margin-top:0">Path to the final</h2>
+    {% for scen, rounds in projection.scenarios.items() %}
+      <h3 style="font-size:.95rem">{{ 'As group winner' if scen == 'group_winner' else 'As runner-up' }}</h3>
+      {% for r in rounds %}
+      <div class="round-row">
+        <span class="round-tag">{{ r.round }}</span>
+        <div class="opp-list">
+          {% for o in r.possible_opponents %}
+            <span class="opp">{{ o.country }}{% if o.team_name %} <span class="muted">{{ o.team_name }}</span>{% endif %}</span>
+          {% else %}<span class="muted">(none)</span>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No projection available.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
