@@ -1,8 +1,12 @@
 """Flask dashboard for the AIUB World Cup dataset."""
+from pathlib import Path
+
 from flask import Flask, render_template, abort, jsonify
 
 from dashboard.data_access import DataStore
 from dashboard.jobs import RefreshJob
+from dashboard.sim_api import make_sim_blueprint
+from simulation.store import SimStore
 
 SITE = "https://ofsportsaiub.org"
 
@@ -13,10 +17,16 @@ def _asset(path):
     return f"{SITE}{path}" if path.startswith("/") else path
 
 
-def create_app(data_dir="./data/latest", job=None):
+def create_app(data_dir="./data/latest", sim_dir=None, job=None):
     app = Flask(__name__)
     store = DataStore(data_dir)
     refresh_job = job or RefreshJob()
+
+    if sim_dir is None:
+        p = Path(data_dir)
+        sim_dir = str(p.parent / "simulations") if p.name == "latest" else str(p / "simulations")
+    sim_store = SimStore(sim_dir)
+    app.register_blueprint(make_sim_blueprint(store, sim_store, data_dir))
 
     @app.context_processor
     def _globals():
