@@ -46,3 +46,20 @@ winner and as runner-up. Deterministic; the sets shrink automatically as real gr
 A local Flask dashboard: overview, teams (country + real name), fixtures, standings, knockout
 bracket, top scorers, and each team's possible-opponents path to the final. Light + dark. The
 **Refresh data** button re-runs the scraper + projection in the background without blocking the page.
+
+## Simulator
+
+Open any team at **`/teams/<id>`** (from the Teams list) to use the opponent simulator. Three
+modes — only one panel visible at a time:
+
+| Mode | What it does |
+|------|----------------|
+| **A — Possible opponents** | Deterministic path-to-final sets (group winner / runner-up scenarios). |
+| **B — What-if** | Pick group 1st/2nd and knockout winners; path updates live. Auto-snapshots on change; **Save as…** for named scenarios. |
+| **C — Monte Carlo** | Run N trials with a bias dial (0 = uniform, 1 = full strength). Default **N = 1,000**, max **10,000**. |
+
+Simulator state is stored under **`data/simulations/`** (ratings, active picks, history). Scraper
+refresh writes only `data/latest/` — it never touches the sim directory.
+
+JSON API (all under `/api/sim/`): ratings, current picks/settings, what-if preview, Monte Carlo run,
+and history list/save/restore/rename/delete. Errors return `{ "ok": false, "error": "..." }`.
