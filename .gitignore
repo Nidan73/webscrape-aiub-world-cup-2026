@@ -21,3 +21,8 @@ data/
 # Local session memory (not part of the project)
 .remember/
 
+# Vendored third-party skill install (ui-ux-pro-max) + tooling artifacts
+.agents/
+.claude/
+skills-lock.json
+
