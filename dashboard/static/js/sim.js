@@ -36,6 +36,28 @@
     };
   }
 
+  function formatDhaka(value) {
+    if (!value) return "";
+    let raw = String(value).trim();
+    const legacy = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z$/);
+    if (legacy) raw = `${legacy[1]}T${legacy[2]}:${legacy[3]}:${legacy[4]}Z`;
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return value;
+    try {
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Dhaka",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(dt).replace(",", "") + " Asia/Dhaka";
+    } catch (_) {
+      return value;
+    }
+  }
+
   function postJSON(url, body, options) {
     const opts = options || {};
     return fetch(url, {
@@ -124,7 +146,7 @@
       top.appendChild(type);
       const meta = document.createElement("div");
       meta.className = "history-item-meta";
-      meta.textContent = h.created_at || "";
+      meta.textContent = formatDhaka(h.created_at);
       const actions = document.createElement("div");
       actions.className = "history-item-actions";
 

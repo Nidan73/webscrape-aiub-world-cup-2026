@@ -7,11 +7,13 @@ import os
 import re
 import tempfile
 import threading
-import time
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+_DHAKA = ZoneInfo("Asia/Dhaka")
 _DEFAULT_CURRENT = {
     "whatif": {"groups": {}, "ko": {}},
     "mc": {"n": 1000, "bias": 0.0, "use_current_picks": True},
@@ -137,13 +139,14 @@ class SimStore:
             raise ValueError("type must be auto or named")
         with self._store_lock():
             self._ensure_body()
-            ts = time.strftime("%Y%m%d-%H%M%S")
+            now = datetime.now(_DHAKA)
+            ts = now.strftime("%Y%m%d-%H%M%S")
             hid = f"{type}-{ts}-{uuid.uuid4().hex[:8]}"
             entry = {
                 "id": hid,
                 "type": type,
                 "title": title or hid,
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "created_at": now.isoformat(timespec="seconds"),
                 "team_id": team_id,
                 "ratings": (payload or {}).get("ratings") or {},
                 "whatif": (payload or {}).get("whatif") or {"groups": {}, "ko": {}},

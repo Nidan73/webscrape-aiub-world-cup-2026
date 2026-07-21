@@ -6,6 +6,7 @@ from flask import Flask, render_template, abort, jsonify
 from dashboard.data_access import DataStore
 from dashboard.jobs import RefreshJob
 from dashboard.sim_api import make_sim_blueprint
+from dashboard.timefmt import format_dhaka
 from projection.load import build_context
 from projection.resolver import _side_set
 from simulation.store import SimStore
@@ -53,6 +54,7 @@ def create_app(data_dir="./data/latest", sim_dir=None, job=None):
     app = Flask(__name__)
     store = DataStore(data_dir)
     refresh_job = job or RefreshJob()
+    app.jinja_env.filters["dhaka"] = format_dhaka
 
     if sim_dir is None:
         p = Path(data_dir)
