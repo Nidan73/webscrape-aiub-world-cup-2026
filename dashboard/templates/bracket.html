@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="page-title">Knockout Bracket</h1>
+<div class="page-head">
+  <h1 class="page-title">Knockout Bracket</h1>
+</div>
+{% if stages %}
 <div class="table-wrap" style="padding:8px">
   <div style="display:flex;gap:16px;min-width:max-content">
     {% for stage in stages %}
@@ -18,4 +21,9 @@
     {% endfor %}
   </div>
 </div>
+{% else %}
+<div class="empty-state">
+  <p>Bracket not available yet — the knockout stage will appear here once the group stage concludes.</p>
+</div>
+{% endif %}
 {% endblock %}

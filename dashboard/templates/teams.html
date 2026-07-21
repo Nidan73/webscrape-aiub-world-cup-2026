@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="page-title">Teams <span class="muted">({{ teams|length }})</span></h1>
+<div class="page-head">
+  <h1 class="page-title">Teams</h1>
+  <span class="page-count">{{ teams|length }} team{{ 's' if teams|length != 1 }}</span>
+</div>
+{% if teams %}
 <div class="card-grid">
   {% for t in teams %}
   <a class="card" href="/teams/{{ t.id }}">
@@ -14,4 +18,9 @@
   </a>
   {% endfor %}
 </div>
+{% else %}
+<div class="empty-state">
+  <p>No teams yet — squads will appear here once the roster data is scraped.</p>
+</div>
+{% endif %}
 {% endblock %}

@@ -1,7 +1,19 @@
-// Theme toggle persistence (respects OS default unless user overrides).
+// Theme toggle: respects OS default unless user overrides, persists choice.
 (function () {
+  const root = document.documentElement;
+  const toggle = document.getElementById("theme-toggle");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   const saved = localStorage.getItem("theme");
-  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  let theme = saved || (prefersDark ? "dark" : "light");
+  root.setAttribute("data-theme", theme);
+  if (!toggle) return;
+  toggle.setAttribute("aria-pressed", String(theme === "dark"));
+  toggle.addEventListener("click", () => {
+    theme = theme === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+    toggle.setAttribute("aria-pressed", String(theme === "dark"));
+  });
 })();
 
 // Background refresh: POST /refresh, poll /refresh/status, reload when done.

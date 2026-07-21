@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="page-title">Top Scorers</h1>
+<div class="page-head">
+  <h1 class="page-title">Top Scorers</h1>
+  {% if scorers %}<span class="page-count">{{ scorers|length }} scorer{{ 's' if scorers|length != 1 }}</span>{% endif %}
+</div>
 {% if scorers %}
 <div class="table-wrap">
   <table>
@@ -13,6 +16,8 @@
   </table>
 </div>
 {% else %}
-<div class="card"><p class="muted">No goals have been recorded yet — top scorers will appear after the first goal.</p></div>
+<div class="empty-state">
+  <p>No goals have been recorded yet — top scorers will appear after the first goal.</p>
+</div>
 {% endif %}
 {% endblock %}

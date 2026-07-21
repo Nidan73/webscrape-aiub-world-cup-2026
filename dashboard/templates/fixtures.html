@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="page-title">Fixtures</h1>
+<div class="page-head">
+  <h1 class="page-title">Fixtures</h1>
+  {% if days %}<span class="page-count">{{ days.values()|map('length')|sum }} matches</span>{% endif %}
+</div>
+{% if days %}
 {% for day, matches in days.items() %}
   <h2 class="section-title">{{ day }}</h2>
   <div class="card-grid">
@@ -19,4 +23,9 @@
     {% endfor %}
   </div>
 {% endfor %}
+{% else %}
+<div class="empty-state">
+  <p>No fixtures yet — the match schedule will appear here once it is scraped.</p>
+</div>
+{% endif %}
 {% endblock %}
