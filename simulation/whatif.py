@@ -16,11 +16,14 @@ def _apply_group_picks(ctx, groups: dict) -> None:
 
 
 def _apply_ko_pick(ctx, match_no: int, winner) -> None:
-    """Concretize `winner` on their side of `match_no` and rewrite every
-    "Winner of M{match_no}" label elsewhere to the winner's country, so
-    `resolve()` hits `team_id_by_name` directly instead of unioning both
-    sides of the match via `reach_set`. Raises ValueError if `winner` is
-    not a candidate for the match."""
+    """Concretize `winner` on their side of `match_no`, and for every OTHER
+    match whose `home_label`/`away_label` is "Winner of M{match_no}", set that
+    side's `home_team`/`away_team` (not the label) to the winner's country.
+    `_side_set` checks the concrete team field before falling back to label
+    resolution, so this narrows candidates without touching the label text
+    that `path_for_entry` relies on to figure out which side is "the other
+    side" of a downstream match. Raises ValueError if `winner` is not a
+    candidate for the match."""
     match = ctx.matches[match_no]
     H = _side_set(match, "home", ctx)
     A = _side_set(match, "away", ctx)
@@ -36,9 +39,9 @@ def _apply_ko_pick(ctx, match_no: int, winner) -> None:
         if other is match:
             continue
         if (other.get("home_label") or "").strip().lower() == winner_label:
-            other["home_label"] = country
+            other["home_team"] = country
         if (other.get("away_label") or "").strip().lower() == winner_label:
-            other["away_label"] = country
+            other["away_team"] = country
     ctx._reach_memo.clear()
 
 
@@ -75,8 +78,9 @@ def validate_picks(ctx, picks: dict) -> str | None:
     scratch = copy.deepcopy(ctx)
     scratch._reach_memo = {}
     _apply_group_picks(scratch, groups)
-    for mno, winner in ko.items():
+    for mno in sorted(ko, key=lambda k: int(k)):
         match_no = int(mno)
+        winner = ko[mno]
         try:
             _apply_ko_pick(scratch, match_no, winner)
         except ValueError:
@@ -89,8 +93,9 @@ def apply_picks(ctx, picks: dict):
     ctx._reach_memo = {}
     picks = picks or {}
     _apply_group_picks(ctx, picks.get("groups") or {})
-    for mno, winner in (picks.get("ko") or {}).items():
-        _apply_ko_pick(ctx, int(mno), winner)
+    ko = picks.get("ko") or {}
+    for mno in sorted(ko, key=lambda k: int(k)):
+        _apply_ko_pick(ctx, int(mno), ko[mno])
     ctx._reach_memo.clear()
     return ctx
 
