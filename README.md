@@ -35,3 +35,14 @@ Output (in `data/latest/`, plus a timestamped copy in `data/snapshots/`):
 
 For each team it lists, per knockout round (R32→Final), the set of teams it *could* meet — as group
 winner and as runner-up. Deterministic; the sets shrink automatically as real group results come in.
+
+## Dashboard
+
+```bash
+./venv/bin/pip install -r requirements.txt   # installs flask
+./venv/bin/python -m dashboard.app           # http://127.0.0.1:5000
+```
+
+A local Flask dashboard: overview, teams (country + real name), fixtures, standings, knockout
+bracket, top scorers, and each team's possible-opponents path to the final. Light + dark. The
+**Refresh data** button re-runs the scraper + projection in the background without blocking the page.
