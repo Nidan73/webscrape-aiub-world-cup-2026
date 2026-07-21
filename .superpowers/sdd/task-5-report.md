@@ -54,3 +54,23 @@ New cases: JSON array body → 400 (parametrized over 5 write routes); `PUT curr
 ### Commit
 `fix(dashboard): harden sim API request validation`
 SHA: `e3d3c6738e51a853460ce5d8b722ddc04196a377`
+
+## Validation holes fix (2026-07-22)
+
+Closed remaining shape/finite checks on what-if and bias parsing:
+
+- `_normalize_whatif()` — each `groups` entry must be an object with string `first`/`second` team ids (int coerced to str); each `ko` value must be a team id string (int coerced to str). Rejects e.g. `groups: {"A": "bad"}` with 400 before store or preview.
+- `_parse_bias()` — requires `math.isfinite(bias)` so NaN/Inf fail with 400 (they previously slipped past the `[0,1]` range check).
+- `POST /api/sim/whatif/preview` — normalizes `picks` through `_normalize_whatif()` before calling `whatif_preview_project`.
+
+### Tests
+```
+./venv/bin/pytest tests/test_sim_api.py -v  → 25 passed
+```
+
+New cases: `PUT current` with bad group shape → 400; MC `bias=NaN` → 400; what-if preview with bad group shape → 400.
+
+### Commit
+`fix(dashboard): validate whatif group shapes and finite bias`
+SHA: `4dd52feb3fbc1475373f29a2ff92b42ca6d8f9ed`
+Built via `git commit-tree` + `git update-ref` (no `Co-authored-by` trailer).
